@@ -1,13 +1,16 @@
 var config = {
   type: Phaser.AUTO,
-  width: 1600,
-  height: 1200,
   backgroundColor: '#2d2d2d',
   physics: {
     default: 'matter',
     matter: {
       gravity: { x: 0, y: 0 },
     },
+  },
+  scale: {
+    mode: Phaser.Scale.RESIZE,
+    width: window.innerWidth,
+    height: window.innerHeight,
   },
   scene: [GameScene],
 };

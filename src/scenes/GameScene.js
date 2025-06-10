@@ -6,6 +6,18 @@ var GameScene = new Phaser.Class({
   },
 
   preload: function () {
+    //loading map
+    this.load.tilemapTiledJSON('map', 'assets/map/western.json');
+    this.load.image('western', 'assets/map/westernTileset.png');
+
+    //loading chest
+    this.load.spritesheet('chest', 'assets/chest/chest.png', {
+      frameWidth: 96,
+      frameHeight: 96,
+      endFrame: 3,
+    });
+
+    //loading animations of character
     this.load.spritesheet('cowboy_walk_left', 'assets/walk/cowboy_walk_left.png', {
       frameWidth: 32,
       frameHeight: 32,
@@ -29,36 +41,107 @@ var GameScene = new Phaser.Class({
   },
 
   create: function () {
-    console.log('Textures loaded:', this.textures.getTextureKeys());
-    this.createVisualBorders();
+    //creating animations
     this.createAnimations();
 
-    this.player = this.matter.add.sprite(96, 96, 'cowboy_walk_down');
+    //map settings
+    const map = this.make.tilemap({ key: 'map' });
+    const tileset = map.addTilesetImage('westernTileset', 'western');
+
+    const groundLayer = map.createLayer('ground', tileset);
+    const decorLayer = map.createLayer('decor', tileset);
+    const cactusLayer = map.createLayer('cactus', tileset);
+    const checkpointsLayer = map.createLayer('checkpoints', tileset);
+    const fenceLayer = map.createLayer('fence', tileset);
+
+    cactusLayer.setCollisionByProperty({ collides: true });
+    this.matter.world.convertTilemapLayer(cactusLayer);
+    fenceLayer.setCollisionByProperty({ collides: true });
+    this.matter.world.convertTilemapLayer(fenceLayer);
+
+    //player settings
+    this.player = this.matter.add.sprite(200, 200, 'cowboy_walk_down');
+
     this.player.setDisplaySize(96, 96);
     this.player.setFixedRotation();
     this.player.setFrictionAir(0.1);
     this.player.setCircle(25);
 
-    this.player.body.inertia = Infinity; // Prevents rotation completely
-    this.player.body.frictionAir = 0.15; // Increase air friction
+    this.player.body.inertia = Infinity;
+    this.player.body.frictionAir = 0.15;
     this.player.body.friction = 0.8;
 
-    // Camera follows player
+    //camera settings
     this.cameras.main.startFollow(this.player, true, 1, 1);
+    this.cameras.main.setBounds(0, 0, 3840, 3840);
 
-    this.cameras.main.setBounds(0, 0, 1800, 1600);
-    // World physics bounds
-    this.matter.world.setBounds(0, 0, 1800, 1600);
+    //world size
+    this.matter.world.setBounds(0, 0, 3840, 3840);
 
+    //control buttons
     this.cursors = this.input.keyboard.createCursorKeys();
-  },
-  createVisualBorders: function () {
-    var graphics = this.add.graphics();
-    graphics.lineStyle(4, 0x00ff00);
 
-    graphics.strokeRect(0, 0, 1800, 1600);
+    // creating chest
+    this.chestOpened = false;
+
+    this.chest = this.matter.add.sprite(1968, 1968, 'chest', 0, {
+      isStatic: true,
+    });
+    this.chest.setFrame(0);
+    this.chest.setBody(
+      {
+        type: 'rectangle',
+        width: 60,
+        height: 50,
+      },
+      {
+        isStatic: true,
+      },
+    );
+
+    //notification text
+    this.chestText = this.add.text(0, 0, 'Нажмите X', {
+      font: '32px Courier New',
+      fill: '#e8a820',
+      backgroundColor: '#000000',
+      padding: { x: 10, y: 5 },
+    });
+    this.chestText.setOrigin(0.5, 0.5);
+    this.chestText.setVisible(false);
+    this.chestText.setScrollFactor(0);
+    this.chestText.setDepth(1000);
+
+    // start text
+    this.startText = this.add.text(this.sys.game.config.width / 2, 150, 'Идите к центру карты', {
+      font: '32px Courier New',
+      fill: '#e8a820',
+      backgroundColor: '#000000',
+      padding: { x: 15, y: 10 },
+    });
+    this.startText.setOrigin(0.5, 0.5);
+    this.startText.setScrollFactor(0);
+    this.startText.setDepth(1000);
+    this.startText.setAlpha(0.7);
+    this.time.delayedCall(2000, () => {
+      this.tweens.add({
+        targets: this.startText,
+        alpha: 0,
+        duration: 1000,
+        onComplete: () => this.startText.setVisible(false),
+      });
+    });
   },
+
   createAnimations: function () {
+    // animation opening chest
+    this.anims.create({
+      key: 'chest_open',
+      frames: this.anims.generateFrameNumbers('chest', { start: 0, end: 3 }),
+      frameRate: 8,
+      repeat: 0,
+    });
+
+    //animation of walking
     this.anims.create({
       key: 'walk_left',
       frames: this.anims.generateFrameNumbers('cowboy_walk_left', { start: 0, end: 3 }),
@@ -90,11 +173,13 @@ var GameScene = new Phaser.Class({
   },
 
   update: function () {
-    var speed = 2.5;
+    //variables player's movement
+    var speed = 6;
     var vx = 0;
     var vy = 0;
     var isMoving = false;
 
+    //logic of movement
     if (this.cursors.left.isDown) {
       vx = -speed;
       this.player.play('walk_left', true);
@@ -113,21 +198,19 @@ var GameScene = new Phaser.Class({
       isMoving = true;
     }
 
+    //stop animation when player is standing
     if (!isMoving) {
       this.player.anims.stop();
       this.player.setFrame(0);
-      // Force stop all movement when not pressing keys
       vx = 0;
       vy = 0;
     }
 
     this.player.setVelocity(vx, vy);
 
-    // Force stop any rotation that might occur
+    // fix rotating
     this.player.setAngularVelocity(0);
     this.player.setRotation(0);
-
-    // Clean up tiny velocities that can accumulate
     if (
       Math.abs(this.player.body.velocity.x) < 0.1 &&
       Math.abs(this.player.body.velocity.y) < 0.1 &&
@@ -135,5 +218,68 @@ var GameScene = new Phaser.Class({
     ) {
       this.player.setVelocity(0, 0);
     }
+
+    // changing position of chest text
+    this.chestText.setPosition(this.cameras.main.centerX, this.cameras.main.height - 200);
+
+    //checking chest state(opened or not)
+    if (!this.chestOpened) {
+      const distance = Phaser.Math.Distance.Between(
+        this.player.x,
+        this.player.y,
+        this.chest.x,
+        this.chest.y,
+      );
+
+      // shows hint when player stays next to chest
+      if (distance < 100) {
+        if (!this.chestText.visible) {
+          this.chestText.setVisible(true);
+          this.chestText.setAlpha(0);
+          this.tweens.add({
+            targets: this.chestText,
+            alpha: 0.7,
+            duration: 300,
+          });
+        }
+
+        // check for x key press
+        if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('X'))) {
+          this.openChest();
+        }
+      } else if (this.chestText.visible) {
+        this.tweens.add({
+          targets: this.chestText,
+          alpha: 0,
+          duration: 300,
+          onComplete: () => {
+            this.chestText.setVisible(false);
+            this.chestText.setText('Нажмите X');
+          },
+        });
+      }
+    }
+  },
+
+  openChest() {
+    if (this.chestOpened) return;
+    this.chestOpened = true;
+
+    this.chest.play('chest_open');
+
+    this.chestText.setText('Победа!');
+
+    this.chest.on('animationcomplete', () => {
+      this.chest.setFrame(3);
+
+      this.time.delayedCall(2000, () => {
+        this.tweens.add({
+          targets: this.chestText,
+          alpha: 0,
+          duration: 300,
+          onComplete: () => this.chestText.setVisible(false),
+        });
+      });
+    });
   },
 });
